@@ -1,0 +1,83 @@
+---
+kind: pipeline
+name: default
+type: kubernetes
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
+- name: build
+  pull: if-not-exists
+  image: docker:19.03.12-dind
+  environment:
+    IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
+  commands:
+  # wait for docker service to be up before running docker build
+  - n=0; while [ "$n" -lt 60 ] && [ ! -e /var/run/docker.sock ]; do n=$(( n + 1 )); sleep 1; done
+  - docker build -t $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} . --no-cache
+  volumes:
+  - name: dockersock
+    path: /var/run
+  when:
+    event:
+    - push
+    - tag
+
+- name: push_latest
+  pull: if-not-exists
+  image: docker:19.03.12-dind
+  environment:
+    IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
+    REGISTRY: quay.io
+    DOCKER_USERNAME: ukhomeofficedigital+dind_awscli
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+  commands:
+  - docker login -u="$${DOCKER_USERNAME}" -p=$${DOCKER_PASSWORD} $${REGISTRY}
+  - docker tag $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} $${IMAGE_NAME}:latest
+  - docker push $${IMAGE_NAME}:$${DRONE_COMMIT_SHA}
+  - docker push $${IMAGE_NAME}:latest
+  volumes:
+  - name: dockersock
+    path: /var/run
+  when:
+    branch:
+    - master
+    event:
+    - push
+
+- name: push_tag
+  pull: if-not-exists
+  image: docker:19.03.12-dind
+  environment:
+    IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
+    REGISTRY: quay.io
+    DOCKER_USERNAME: ukhomeofficedigital+dind_awscli
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+  commands:
+  - docker login -u="$${DOCKER_USERNAME}" -p=$${DOCKER_PASSWORD} $${REGISTRY}
+  - docker tag $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} $${IMAGE_NAME}:$${DRONE_TAG}
+  - docker push $${IMAGE_NAME}:$${DRONE_COMMIT_SHA}
+  - docker push $${IMAGE_NAME}:$${DRONE_TAG}
+  volumes:
+  - name: dockersock
+    path: /var/run
+  when:
+    event:
+    - tag
+
+services:
+- name: docker
+  image: docker:19.03.12-dind
+  volumes:
+  - name: dockersock
+    path: /var/run
+
+volumes:
+- name: dockersock
+  temp: {}
+
+...
