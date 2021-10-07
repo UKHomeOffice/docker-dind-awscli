@@ -1,6 +1,6 @@
 ---
 kind: pipeline
-name: build
+name: default
 type: kubernetes
 
 platform:
@@ -9,78 +9,63 @@ platform:
 
 steps:
 - name: build
-  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
   pull: if-not-exists
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
   environment:
     IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
   commands:
   # wait for docker service to be up before running docker build
   - n=0; while [ "$n" -lt 60 ] && [ ! docker stats --no-stream ]; do n=$(( n + 1 )); sleep 1; done; if [ ! docker stats --no-stream ]; then exit 1; fi
   - docker build -t $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} . --no-cache
+  when:
+    event:
+    - push
+    - tag
+
+- name: push_latest
+  pull: if-not-exists
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
+  environment:
+    IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
+    REGISTRY: quay.io
+    DOCKER_USERNAME: ukhomeofficedigital+dind_awscli
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+  commands:
+  # wait for docker service to be up before running docker build
+  - n=0; while [ "$n" -lt 60 ] && [ ! docker stats --no-stream ]; do n=$(( n + 1 )); sleep 1; done; if [ ! docker stats --no-stream ]; then exit 1; fi
+  - docker login -u="$${DOCKER_USERNAME}" -p="$${DOCKER_PASSWORD}" $${REGISTRY}
+  - docker tag $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} $${IMAGE_NAME}:latest
+  - docker push $${IMAGE_NAME}:$${DRONE_COMMIT_SHA}
+  - docker push $${IMAGE_NAME}:latest
+  when:
+    branch:
+    - master
+    event:
+    - push
+
+- name: push_tag
+  pull: if-not-exists
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
+  environment:
+    IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
+    REGISTRY: quay.io
+    DOCKER_USERNAME: ukhomeofficedigital+dind_awscli
+    DOCKER_PASSWORD:
+      from_secret: docker_password
+  commands:
+  # wait for docker service to be up before running docker build
+  - n=0; while [ "$n" -lt 60 ] && [ ! docker stats --no-stream ]; do n=$(( n + 1 )); sleep 1; done; if [ ! docker stats --no-stream ]; then exit 1; fi
+  - docker login -u="$${DOCKER_USERNAME}" -p="$${DOCKER_PASSWORD}" $${REGISTRY}
+  - docker tag $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} $${IMAGE_NAME}:$${DRONE_TAG}
+  - docker push $${IMAGE_NAME}:$${DRONE_COMMIT_SHA}
+  - docker push $${IMAGE_NAME}:$${DRONE_TAG}
+  when:
+    event:
+    - tag
 
 services:
 - name: docker
   image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
 
-trigger:
-  branch:
-    exclude:
-      - master
-  event:
-  - pull_request
-  - push
-
----
-kind: pipeline
-name: publish_latest
-type: kubernetes
-
-platform:
-  os: linux
-  arch: amd64
-
-steps:
-- name: push_latest
-  image: plugins/docker
-  settings:
-    registry: quay.io
-    repo: quay.io/ukhomeofficedigital/dind-awscli
-    tags:
-      - ${DRONE_COMMIT_SHA}
-      - latest
-  environment:
-    DOCKER_PASSWORD:
-      from_secret: ukhomeofficedigital+dind_awscli
-    DOCKER_USERNAME: docker_password
-
-trigger:
-  branch:
-  - master
-  event:
-  - push
-
----
-kind: pipeline
-name: publish_tag
-type: kubernetes
-
-platform:
-  os: linux
-  arch: amd64
-
-steps:
-- name: push_tag
-  image: plugins/docker
-  settings:
-    registry: quay.io
-    repo: quay.io/ukhomeofficedigital/dind-awscli
-    tags:
-      - ${DRONE_TAG}
-  environment:
-    DOCKER_PASSWORD:
-      from_secret: ukhomeofficedigital+dind_awscli
-    DOCKER_USERNAME: docker_password
-
-trigger:
-  event:
-  - tag
+...
