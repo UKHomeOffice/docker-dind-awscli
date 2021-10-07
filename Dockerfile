@@ -1,5 +1,5 @@
-FROM docker:19.03.12-dind
+FROM docker:20.10.8-dind
 
-RUN apk add --no-cache aws-cli
+RUN apk --update add --no-cache aws-cli
 
 ENTRYPOINT [ "/bin/sh" ]
