@@ -23,13 +23,16 @@ services:
   image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
 
 trigger:
+  branch:
+    exclude:
+      - master
   event:
   - pull_request
   - push
 
 ---
 kind: pipeline
-name: publish
+name: publish_latest
 type: kubernetes
 
 platform:
@@ -49,12 +52,23 @@ steps:
     DOCKER_PASSWORD:
       from_secret: ukhomeofficedigital+dind_awscli
     DOCKER_USERNAME: docker_password
-  when:
-    branch:
-    - master
-    event:
-    - push
 
+trigger:
+  branch:
+  - master
+  event:
+  - push
+
+---
+kind: pipeline
+name: publish_tag
+type: kubernetes
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
 - name: push_tag
   image: plugins/docker
   settings:
@@ -66,13 +80,7 @@ steps:
     DOCKER_PASSWORD:
       from_secret: ukhomeofficedigital+dind_awscli
     DOCKER_USERNAME: docker_password
-  when:
-    event:
-    - tag
 
 trigger:
-  branch:
-  - master
   event:
   - tag
-  - push
