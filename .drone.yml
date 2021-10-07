@@ -1,6 +1,6 @@
 ---
 kind: pipeline
-name: default
+name: build
 type: kubernetes
 
 platform:
@@ -9,39 +9,46 @@ platform:
 
 steps:
 - name: build
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
   pull: if-not-exists
-  image: docker:20.10.8-dind
   environment:
     IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
   commands:
   # wait for docker service to be up before running docker build
   - n=0; while [ "$n" -lt 60 ] && [ ! docker stats --no-stream ]; do n=$(( n + 1 )); sleep 1; done; if [ ! docker stats --no-stream ]; then exit 1; fi
   - docker build -t $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} . --no-cache
-  volumes:
-  - name: dockerclientconfig
-    path: /root/.docker
-  when:
-    event:
-    - push
-    - tag
 
+services:
+- name: docker
+  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
+
+trigger:
+  event:
+  - pull_request
+  - push
+
+---
+kind: pipeline
+name: publish
+type: kubernetes
+
+platform:
+  os: linux
+  arch: amd64
+
+steps:
 - name: push_latest
-  pull: if-not-exists
-  image: docker:20.10.8-dind
+  image: plugins/docker
+  settings:
+    registry: quay.io
+    repo: quay.io/ukhomeofficedigital/dind-awscli
+    tags:
+      - ${DRONE_COMMIT_SHA}
+      - latest
   environment:
-    IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
-    REGISTRY: quay.io
-    DOCKER_USERNAME: ukhomeofficedigital+dind_awscli
     DOCKER_PASSWORD:
-      from_secret: docker_password
-  commands:
-  - docker login -u="$${DOCKER_USERNAME}" -p="$${DOCKER_PASSWORD}" $${REGISTRY}
-  - docker tag $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} $${IMAGE_NAME}:latest
-  - docker push $${IMAGE_NAME}:$${DRONE_COMMIT_SHA}
-  - docker push $${IMAGE_NAME}:latest
-  volumes:
-  - name: dockerclientconfig
-    path: /root/.docker
+      from_secret: ukhomeofficedigital+dind_awscli
+    DOCKER_USERNAME: docker_password
   when:
     branch:
     - master
@@ -49,30 +56,23 @@ steps:
     - push
 
 - name: push_tag
-  pull: if-not-exists
-  image: docker:20.10.8-dind
+  image: plugins/docker
+  settings:
+    registry: quay.io
+    repo: quay.io/ukhomeofficedigital/dind-awscli
+    tags:
+      - ${DRONE_TAG}
   environment:
-    IMAGE_NAME: quay.io/ukhomeofficedigital/dind-awscli
-    REGISTRY: quay.io
-    DOCKER_USERNAME: ukhomeofficedigital+dind_awscli
     DOCKER_PASSWORD:
-      from_secret: docker_password
-  commands:
-  - docker login -u="$${DOCKER_USERNAME}" -p="$${DOCKER_PASSWORD}" $${REGISTRY}
-  - docker tag $${IMAGE_NAME}:$${DRONE_COMMIT_SHA} $${IMAGE_NAME}:$${DRONE_TAG}
-  - docker push $${IMAGE_NAME}:$${DRONE_COMMIT_SHA}
-  - docker push $${IMAGE_NAME}:$${DRONE_TAG}
-  volumes:
-  - name: dockerclientconfig
-    path: /root/.docker
+      from_secret: ukhomeofficedigital+dind_awscli
+    DOCKER_USERNAME: docker_password
   when:
     event:
     - tag
 
-services:
-- name: docker
-  image: 340268328991.dkr.ecr.eu-west-2.amazonaws.com/acp/dind
-
-volumes:
-- name: dockerclientconfig
-  temp: {}
+trigger:
+  branch:
+  - master
+  event:
+  - tag
+  - push
